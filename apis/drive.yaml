@@ -1,0 +1,572 @@
+---
+# Google Drive API v3 — https://developers.google.com/drive/api/reference/rest/v3
+#
+# Resources covered:
+#   drive_user   (about.get)                   — scope for collection ops
+#   file         (files.*)
+#   permission   (files.permissions.*)
+#   comment      (files.comments.*)
+#   reply        (files.comments.replies.*)
+#   revision     (files.revisions.*)
+#   drive        (drives.*)                    — shared drives
+#
+# `fields=*` is requested on reads so output expressions can pick any
+# exposed field (Drive defaults to a sparse subset without it).
+
+name: drive
+base_url: "https://www.googleapis.com"
+path_prefixes:
+- /drive/v3
+- /upload/drive/v3
+
+meta:
+- name: drive_user
+  kind: endpoint
+  input:
+  - name: dummy
+  request: get('/drive/v3/about?fields=*')
+  # Output field conventions:
+  #   - Bare `response.body.X`: field is guaranteed present by the API
+  #     contract. Missing → eval error → policy 500 (loud failure).
+  #   - `response.body.?X`: field may be omitted. The runtime unwraps
+  #     the CEL `optional<T>` — present → value, absent → null.
+  #     Policies guard with `meta.X != null`.
+  output:
+  - name: user
+    expr: response.body.user
+  - name: canCreateDrives
+    expr: response.body.?canCreateDrives
+
+- name: file
+  kind: endpoint
+  input:
+  - name: file_id
+  request: get('/drive/v3/files/' + string(input.file_id) + '?fields=*&supportsAllDrives=true')
+  output:
+  - name: id
+    expr: response.body.id
+  - name: name
+    expr: response.body.name
+  - name: originalFilename
+    expr: response.body.?originalFilename
+  - name: fileExtension
+    expr: response.body.?fileExtension
+  # `mimeType` is the file's MIME type. Folders carry
+  # `application/vnd.google-apps.folder`.
+  - name: mimeType
+    expr: response.body.mimeType
+  # `parents` is the list of direct parent folder ids; Drive does
+  # not expose ancestry on a file resource.
+  - name: parents
+    expr: response.body.?parents
+  - name: driveId
+    expr: response.body.?driveId
+  - name: owners
+    expr: response.body.?owners
+  - name: ownedByMe
+    expr: response.body.?ownedByMe
+  - name: shared
+    expr: response.body.?shared
+  - name: trashed
+    expr: response.body.?trashed
+  - name: trashingUser
+    expr: response.body.?trashingUser
+  - name: createdTime
+    expr: response.body.?createdTime
+  - name: modifiedTime
+    expr: response.body.?modifiedTime
+  - name: modifiedByMeTime
+    expr: response.body.?modifiedByMeTime
+  - name: sharedWithMeTime
+    expr: response.body.?sharedWithMeTime
+  - name: viewedByMe
+    expr: response.body.?viewedByMe
+  - name: trashedTime
+    expr: response.body.?trashedTime
+  - name: lastModifyingUser
+    expr: response.body.?lastModifyingUser
+  # `size` is the file payload size in bytes.
+  - name: size
+    expr: response.body.?size
+  # `permissions` is the structured list of grants (id, type, role,
+  # emailAddress, domain). `permissionIds` is the corresponding id
+  # list.
+  - name: permissions
+    expr: response.body.?permissions
+  - name: permissionIds
+    expr: response.body.?permissionIds
+  # `capabilities` is a structured object Drive computes per-caller
+  # (canEdit / canShare / canDelete / …).
+  - name: capabilities
+    expr: response.body.?capabilities
+  # Shared drive this file lives in. `?drive_id:` skips the bind for files
+  # in My Drive (no driveId set).
+  - name: drive
+    expr: 'drive{?drive_id: response.body.?driveId}'
+  # Shortcut target — recursive: a shortcut may target another shortcut.
+  # `?file_id:` no-ops for non-shortcut files.
+  - name: shortcut_target
+    expr: 'file{?file_id: response.body.?shortcutDetails.?targetId}'
+
+- name: permission
+  kind: endpoint
+  input:
+  - name: file_id
+  - name: permission_id
+  request: get('/drive/v3/files/' + string(input.file_id) + '/permissions/' + string(input.permission_id) + '?supportsAllDrives=true&fields=*')
+  output:
+  - name: id
+    expr: response.body.id
+  # `type` is user / group / domain / anyone; `role` is owner /
+  # organizer / fileOrganizer / writer / commenter / reader.
+  - name: type
+    expr: response.body.type
+  - name: role
+    expr: response.body.role
+  # `emailAddress` / `domain` identify the grantee. emailAddress
+  # is set when type is user or group; domain when type is domain.
+  - name: emailAddress
+    expr: response.body.?emailAddress
+  - name: domain
+    expr: response.body.?domain
+  - name: deleted
+    expr: response.body.?deleted
+  - name: pendingOwner
+    expr: response.body.?pendingOwner
+  # The file this permission grants access to.
+  - name: file
+    expr: 'file{ file_id: input.file_id }'
+
+- name: comment
+  kind: endpoint
+  input:
+  - name: file_id
+  - name: comment_id
+  request: get('/drive/v3/files/' + string(input.file_id) + '/comments/' + string(input.comment_id) + '?fields=*')
+  output:
+  - name: id
+    expr: response.body.id
+  # `author` is the User shape (displayName, emailAddress, …).
+  - name: author
+    expr: response.body.author
+  - name: createdTime
+    expr: response.body.createdTime
+  - name: modifiedTime
+    expr: response.body.modifiedTime
+  - name: resolved
+    expr: response.body.?resolved
+  - name: deleted
+    expr: response.body.?deleted
+  # The commented file.
+  - name: file
+    expr: 'file{ file_id: input.file_id }'
+
+- name: reply
+  kind: endpoint
+  input:
+  - name: file_id
+  - name: comment_id
+  - name: reply_id
+  request: get('/drive/v3/files/' + string(input.file_id) + '/comments/' + string(input.comment_id) + '/replies/' + string(input.reply_id) + '?fields=*')
+  output:
+  - name: id
+    expr: response.body.id
+  - name: author
+    expr: response.body.author
+  - name: createdTime
+    expr: response.body.createdTime
+  - name: modifiedTime
+    expr: response.body.modifiedTime
+  # `action` is "resolve" / "reopen" / null on replies that
+  # transition the parent comment's state.
+  - name: action
+    expr: response.body.?action
+  - name: deleted
+    expr: response.body.?deleted
+  # The parent comment this reply is attached to.
+  - name: comment
+    expr: 'comment{ file_id: input.file_id, comment_id: input.comment_id }'
+  # The underlying file (also reachable via reply.comment.file —
+  # exposed directly here for convenience).
+  - name: file
+    expr: 'file{ file_id: input.file_id }'
+
+- name: revision
+  kind: endpoint
+  input:
+  - name: file_id
+  - name: revision_id
+  request: get('/drive/v3/files/' + string(input.file_id) + '/revisions/' + string(input.revision_id) + '?fields=*')
+  output:
+  - name: id
+    expr: response.body.id
+  - name: modifiedTime
+    expr: response.body.?modifiedTime
+  - name: lastModifyingUser
+    expr: response.body.?lastModifyingUser
+  - name: size
+    expr: response.body.?size
+  - name: keepForever
+    expr: response.body.?keepForever
+  - name: published
+    expr: response.body.?published
+  - name: publishedOutsideDomain
+    expr: response.body.?publishedOutsideDomain
+  # The file this revision belongs to.
+  - name: file
+    expr: 'file{ file_id: input.file_id }'
+
+- name: drive
+  kind: endpoint
+  input:
+  - name: drive_id
+  request: get('/drive/v3/drives/' + string(input.drive_id) + '?useDomainAdminAccess=false')
+  output:
+  - name: id
+    expr: response.body.id
+  - name: name
+    expr: response.body.name
+  - name: hidden
+    expr: response.body.?hidden
+  - name: orgUnitId
+    expr: response.body.?orgUnitId
+  # `restrictions` carries the shared drive's admin-managed flags;
+  # `capabilities` is what the caller can do (canManageMembers,
+  # canDeleteChildren, …).
+  - name: restrictions
+    expr: response.body.?restrictions
+  - name: capabilities
+    expr: response.body.?capabilities
+
+actions:
+# ---- about / changes / channels ----------------------------------------
+- name: get_about
+  method: GET
+  path: /drive/v3/about
+
+- name: list_changes
+  method: GET
+  path: /drive/v3/changes
+
+- name: get_start_page_token
+  method: GET
+  path: /drive/v3/changes/startPageToken
+
+- name: watch_changes
+  method: POST
+  path: /drive/v3/changes/watch
+
+- name: stop_channel
+  method: POST
+  path: /drive/v3/channels/stop
+
+# ---- files -------------------------------------------------------------
+- name: list_files
+  method: GET
+  path: /drive/v3/files
+
+- name: generate_file_ids
+  method: GET
+  path: /drive/v3/files/generateIds
+
+- name: empty_trash
+  method: DELETE
+  path: /drive/v3/files/trash
+
+- name: create_file
+  method: POST
+  path: /drive/v3/files
+
+- name: upload_file
+  method: POST
+  path: /upload/drive/v3/files
+
+- name: get_file
+  method: GET
+  path: /drive/v3/files/{file_id}
+  bind: |
+    file{ file_id: match.file_id }
+
+- name: update_file
+  method: PATCH
+  path: /drive/v3/files/{file_id}
+  bind: |
+    file{ file_id: match.file_id }
+
+- name: upload_file_update
+  method: PATCH
+  path: /upload/drive/v3/files/{file_id}
+  bind: |
+    file{ file_id: match.file_id }
+
+- name: delete_file
+  method: DELETE
+  path: /drive/v3/files/{file_id}
+  bind: |
+    file{ file_id: match.file_id }
+
+- name: copy_file
+  method: POST
+  path: /drive/v3/files/{file_id}/copy
+  bind: |
+    file{ file_id: match.file_id }
+
+- name: export_file
+  method: GET
+  path: /drive/v3/files/{file_id}/export
+  bind: |
+    file{ file_id: match.file_id }
+
+- name: watch_file
+  method: POST
+  path: /drive/v3/files/{file_id}/watch
+  bind: |
+    file{ file_id: match.file_id }
+
+- name: list_file_labels
+  method: GET
+  path: /drive/v3/files/{file_id}/listLabels
+  bind: |
+    file{ file_id: match.file_id }
+
+- name: modify_file_labels
+  method: POST
+  path: /drive/v3/files/{file_id}/modifyLabels
+  bind: |
+    file{ file_id: match.file_id }
+
+# ---- permissions -------------------------------------------------------
+# Nested actions also bind the parent `file{}` so policies can check
+# file.shared / file.driveId / file.owners / file.permissions on
+# permission/comment/reply/revision mutations.
+- name: list_permissions
+  method: GET
+  path: /drive/v3/files/{file_id}/permissions
+  bind: |
+    file{ file_id: match.file_id }
+
+- name: create_permission
+  method: POST
+  path: /drive/v3/files/{file_id}/permissions
+  bind: |
+    file{ file_id: match.file_id }
+
+- name: get_permission
+  method: GET
+  path: /drive/v3/files/{file_id}/permissions/{permission_id}
+  binds:
+    - |
+      permission{ file_id: match.file_id, permission_id: match.permission_id }
+    - |
+      file{ file_id: match.file_id }
+
+- name: update_permission
+  method: PATCH
+  path: /drive/v3/files/{file_id}/permissions/{permission_id}
+  binds:
+    - |
+      permission{ file_id: match.file_id, permission_id: match.permission_id }
+    - |
+      file{ file_id: match.file_id }
+
+- name: delete_permission
+  method: DELETE
+  path: /drive/v3/files/{file_id}/permissions/{permission_id}
+  binds:
+    - |
+      permission{ file_id: match.file_id, permission_id: match.permission_id }
+    - |
+      file{ file_id: match.file_id }
+
+# ---- comments ----------------------------------------------------------
+- name: list_comments
+  method: GET
+  path: /drive/v3/files/{file_id}/comments
+  bind: |
+    file{ file_id: match.file_id }
+
+- name: create_comment
+  method: POST
+  path: /drive/v3/files/{file_id}/comments
+  bind: |
+    file{ file_id: match.file_id }
+
+- name: get_comment
+  method: GET
+  path: /drive/v3/files/{file_id}/comments/{comment_id}
+  binds:
+    - |
+      comment{ file_id: match.file_id, comment_id: match.comment_id }
+    - |
+      file{ file_id: match.file_id }
+
+- name: update_comment
+  method: PATCH
+  path: /drive/v3/files/{file_id}/comments/{comment_id}
+  binds:
+    - |
+      comment{ file_id: match.file_id, comment_id: match.comment_id }
+    - |
+      file{ file_id: match.file_id }
+
+- name: delete_comment
+  method: DELETE
+  path: /drive/v3/files/{file_id}/comments/{comment_id}
+  binds:
+    - |
+      comment{ file_id: match.file_id, comment_id: match.comment_id }
+    - |
+      file{ file_id: match.file_id }
+
+# ---- replies -----------------------------------------------------------
+- name: list_replies
+  method: GET
+  path: /drive/v3/files/{file_id}/comments/{comment_id}/replies
+  binds:
+    - |
+      comment{ file_id: match.file_id, comment_id: match.comment_id }
+    - |
+      file{ file_id: match.file_id }
+
+- name: create_reply
+  method: POST
+  path: /drive/v3/files/{file_id}/comments/{comment_id}/replies
+  binds:
+    - |
+      comment{ file_id: match.file_id, comment_id: match.comment_id }
+    - |
+      file{ file_id: match.file_id }
+
+- name: get_reply
+  method: GET
+  path: /drive/v3/files/{file_id}/comments/{comment_id}/replies/{reply_id}
+  binds:
+    - |
+      reply{ file_id: match.file_id, comment_id: match.comment_id, reply_id: match.reply_id }
+    - |
+      comment{ file_id: match.file_id, comment_id: match.comment_id }
+    - |
+      file{ file_id: match.file_id }
+
+- name: update_reply
+  method: PATCH
+  path: /drive/v3/files/{file_id}/comments/{comment_id}/replies/{reply_id}
+  binds:
+    - |
+      reply{ file_id: match.file_id, comment_id: match.comment_id, reply_id: match.reply_id }
+    - |
+      comment{ file_id: match.file_id, comment_id: match.comment_id }
+    - |
+      file{ file_id: match.file_id }
+
+- name: delete_reply
+  method: DELETE
+  path: /drive/v3/files/{file_id}/comments/{comment_id}/replies/{reply_id}
+  binds:
+    - |
+      reply{ file_id: match.file_id, comment_id: match.comment_id, reply_id: match.reply_id }
+    - |
+      comment{ file_id: match.file_id, comment_id: match.comment_id }
+    - |
+      file{ file_id: match.file_id }
+
+# ---- revisions ---------------------------------------------------------
+- name: list_revisions
+  method: GET
+  path: /drive/v3/files/{file_id}/revisions
+  bind: |
+    file{ file_id: match.file_id }
+
+- name: get_revision
+  method: GET
+  path: /drive/v3/files/{file_id}/revisions/{revision_id}
+  binds:
+    - |
+      revision{ file_id: match.file_id, revision_id: match.revision_id }
+    - |
+      file{ file_id: match.file_id }
+
+- name: update_revision
+  method: PATCH
+  path: /drive/v3/files/{file_id}/revisions/{revision_id}
+  binds:
+    - |
+      revision{ file_id: match.file_id, revision_id: match.revision_id }
+    - |
+      file{ file_id: match.file_id }
+
+- name: delete_revision
+  method: DELETE
+  path: /drive/v3/files/{file_id}/revisions/{revision_id}
+  binds:
+    - |
+      revision{ file_id: match.file_id, revision_id: match.revision_id }
+    - |
+      file{ file_id: match.file_id }
+
+# ---- drives (shared drives) --------------------------------------------
+- name: list_drives
+  method: GET
+  path: /drive/v3/drives
+
+- name: create_drive
+  method: POST
+  path: /drive/v3/drives
+
+- name: get_drive
+  method: GET
+  path: /drive/v3/drives/{drive_id}
+  bind: |
+    drive{ drive_id: match.drive_id }
+
+- name: update_drive
+  method: PATCH
+  path: /drive/v3/drives/{drive_id}
+  bind: |
+    drive{ drive_id: match.drive_id }
+
+- name: delete_drive
+  method: DELETE
+  path: /drive/v3/drives/{drive_id}
+  bind: |
+    drive{ drive_id: match.drive_id }
+
+- name: hide_drive
+  method: POST
+  path: /drive/v3/drives/{drive_id}/hide
+  bind: |
+    drive{ drive_id: match.drive_id }
+
+- name: unhide_drive
+  method: POST
+  path: /drive/v3/drives/{drive_id}/unhide
+  bind: |
+    drive{ drive_id: match.drive_id }
+
+# Documentation-only starter policies. Same shape and substitution
+# rules as gmail.yaml — see that file's top-of-block comment for
+# the gating-model rationale; the Drive set re-uses two of the same
+# trust signals (folder placement, file ownership).
+#
+# == Substitution placeholders ==========================================
+#
+#   <AGENT_FOLDER_ID>  Drive folder ID (e.g. `1AbC2dE3...`) the
+#                      operator hands the agent. Files placed
+#                      directly in this folder are agent-scoped;
+#                      files anywhere else aren't covered by the
+#                      folder gate.
+#
+# == What's deliberately out of scope ===================================
+#
+# - Drive's `parents` field is the file's DIRECT parent only — Drive
+#   doesn't surface ancestry on a file resource. So the folder gate
+#   matches direct children of <AGENT_FOLDER_ID>; subfolder contents
+#   need either a separate policy per subfolder ID or a future
+#   ancestor-walking meta. Operators wanting deeper nesting today
+#   typically wire a second policy with the same condition shape but
+#   a different folder ID.
+# - `permissions.*` (sharing) is a privilege-escalation surface —
+#   adding a permission can quietly grant external readers — and
+#   stays per-instance via the proposals flow.
+# - `revisions.*` and `drives.*` (shared drives administration) are
+#   also operator-tier and not covered.

@@ -1,0 +1,268 @@
+---
+# Google Sheets API v4 — https://developers.google.com/sheets/api/reference/rest
+#
+# Sheets has exactly one top-level resource (`spreadsheets`); everything
+# else (values, sheets, developerMetadata, pivot tables, conditional
+# formats, banded ranges, protected ranges) lives inside a single
+# spreadsheet document and is manipulated via `batchUpdate` sub-requests.
+# So there's one meta (`spreadsheet`) and every per-resource action binds
+# to it.
+
+name: sheets
+base_url: "https://sheets.googleapis.com"
+path_prefixes:
+- /v4/spreadsheets
+
+meta:
+- name: spreadsheet
+  kind: endpoint
+  input:
+  # `id` rather than `spreadsheet_id` — the latter would normalize to
+  # `spreadsheetId` in proto and collide with the output field.
+  - name: id
+  # includeGridData=false avoids pulling every cell value for a policy
+  # check; grid data can be requested separately via values.* if needed.
+  request: get('/v4/spreadsheets/' + string(input.id) + '?includeGridData=false')
+  output:
+  - name: spreadsheetId
+    expr: response.body.spreadsheetId
+  # `properties` carries title, locale, autoRecalc, and
+  # spreadsheetTheme.
+  - name: properties
+    expr: response.body.properties
+  # `developerMetadata` is a list of (key, value, location,
+  # visibility) records written via batch_update_spreadsheet.
+  - name: developerMetadata
+    expr: response.body.?developerMetadata
+
+- name: developer_metadata
+  kind: endpoint
+  input:
+  - name: spreadsheet
+  - name: id
+  request: get('/v4/spreadsheets/' + string(input.spreadsheet) + '/developerMetadata/' + string(input.id))
+  output:
+  - name: metadataId
+    expr: response.body.metadataId
+  - name: metadataKey
+    expr: response.body.metadataKey
+  - name: metadataValue
+    expr: response.body.?metadataValue
+  - name: location
+    expr: response.body.?location
+  - name: visibility
+    expr: response.body.?visibility
+  # Parent spreadsheet.
+  - name: parent_spreadsheet
+    expr: 'spreadsheet{ id: input.spreadsheet }'
+
+# Cell range returned by values.get. Bound by the values endpoints
+# below.
+- name: value_range
+  kind: endpoint
+  input:
+  - name: spreadsheet
+  - name: range
+  request: get('/v4/spreadsheets/' + string(input.spreadsheet) + '/values/' + string(input.range))
+  output:
+  # `range` is the A1 notation the request specified.
+  - name: range
+    expr: response.body.range
+  - name: parent_spreadsheet
+    expr: 'spreadsheet{ id: input.spreadsheet }'
+
+actions:
+# ---- spreadsheets ------------------------------------------------------
+- name: create_spreadsheet
+  method: POST
+  path: /v4/spreadsheets
+
+- name: get_spreadsheet
+  method: GET
+  path: /v4/spreadsheets/{id}
+  binds:
+    - |
+      spreadsheet{ id: match.id }
+    - |
+      drive.file{ file_id: match.id }
+
+- name: get_spreadsheet_by_data_filter
+  method: POST
+  path: /v4/spreadsheets/{id}/getByDataFilter
+  binds:
+    - |
+      spreadsheet{ id: match.id }
+    - |
+      drive.file{ file_id: match.id }
+
+- name: batch_update_spreadsheet
+  method: POST
+  path: /v4/spreadsheets/{id}/batchUpdate
+  binds:
+    - |
+      spreadsheet{ id: match.id }
+    - |
+      drive.file{ file_id: match.id }
+
+# ---- values (A1-range CRUD) -------------------------------------------
+# Paths: /v4/spreadsheets/{id}/values/{range}
+#        /v4/spreadsheets/{id}/values:batchGet|batchUpdate|batchClear|
+#                                     batchGetByDataFilter|
+#                                     batchUpdateByDataFilter|
+#                                     batchClearByDataFilter
+#
+# Google uses `:method` suffix on the final segment (e.g. `values:batchGet`).
+# path_segments splits on `/` only so the `:method` stays attached to the
+# preceding segment, and we match it as a literal segment below.
+- name: get_values
+  method: GET
+  path: /v4/spreadsheets/{id}/values/{range}
+  binds:
+    - |
+      value_range{ spreadsheet: match.id, range: match.range }
+    - |
+      spreadsheet{ id: match.id }
+    - |
+      drive.file{ file_id: match.id }
+
+- name: update_values
+  method: PUT
+  path: /v4/spreadsheets/{id}/values/{range}
+  binds:
+    - |
+      value_range{ spreadsheet: match.id, range: match.range }
+    - |
+      spreadsheet{ id: match.id }
+    - |
+      drive.file{ file_id: match.id }
+
+# `:append` and `:clear` are method-suffixes on the final segment, so the
+# `{range}` capture also pulls in the suffix; an extra filter narrows the
+# action to the right verb. The bind strips `:append` to recover the bare
+# A1 range so value_range can fetch what's currently there before append.
+- name: append_values
+  method: POST
+  path: /v4/spreadsheets/{id}/values/{range}
+  filter: match.range.endsWith(':append')
+  binds:
+    - |
+      value_range{ spreadsheet: match.id, range: match.range.split(':')[0] }
+    - |
+      spreadsheet{ id: match.id }
+    - |
+      drive.file{ file_id: match.id }
+
+- name: clear_values
+  method: POST
+  path: /v4/spreadsheets/{id}/values/{range}
+  filter: match.range.endsWith(':clear')
+  binds:
+    - |
+      value_range{ spreadsheet: match.id, range: match.range.split(':')[0] }
+    - |
+      spreadsheet{ id: match.id }
+    - |
+      drive.file{ file_id: match.id }
+
+- name: batch_get_values
+  method: GET
+  path: /v4/spreadsheets/{id}/values:batchGet
+  binds:
+    - |
+      spreadsheet{ id: match.id }
+    - |
+      drive.file{ file_id: match.id }
+
+- name: batch_update_values
+  method: POST
+  path: /v4/spreadsheets/{id}/values:batchUpdate
+  binds:
+    - |
+      spreadsheet{ id: match.id }
+    - |
+      drive.file{ file_id: match.id }
+
+- name: batch_clear_values
+  method: POST
+  path: /v4/spreadsheets/{id}/values:batchClear
+  binds:
+    - |
+      spreadsheet{ id: match.id }
+    - |
+      drive.file{ file_id: match.id }
+
+- name: batch_get_values_by_data_filter
+  method: POST
+  path: /v4/spreadsheets/{id}/values:batchGetByDataFilter
+  binds:
+    - |
+      spreadsheet{ id: match.id }
+    - |
+      drive.file{ file_id: match.id }
+
+- name: batch_update_values_by_data_filter
+  method: POST
+  path: /v4/spreadsheets/{id}/values:batchUpdateByDataFilter
+  binds:
+    - |
+      spreadsheet{ id: match.id }
+    - |
+      drive.file{ file_id: match.id }
+
+- name: batch_clear_values_by_data_filter
+  method: POST
+  path: /v4/spreadsheets/{id}/values:batchClearByDataFilter
+  binds:
+    - |
+      spreadsheet{ id: match.id }
+    - |
+      drive.file{ file_id: match.id }
+
+# ---- sheets ------------------------------------------------------------
+- name: copy_sheet_to
+  method: POST
+  path: /v4/spreadsheets/{id}/sheets/{sheet_id}/copyTo
+  binds:
+    - |
+      spreadsheet{ id: match.id }
+    - |
+      drive.file{ file_id: match.id }
+
+# ---- developerMetadata -------------------------------------------------
+- name: get_developer_metadata
+  method: GET
+  path: /v4/spreadsheets/{id}/developerMetadata/{metadata_id}
+  binds:
+    - |
+      developer_metadata{ spreadsheet: match.id, id: match.metadata_id }
+    - |
+      drive.file{ file_id: match.id }
+
+- name: search_developer_metadata
+  method: POST
+  path: /v4/spreadsheets/{id}/developerMetadata:search
+  binds:
+    - |
+      spreadsheet{ id: match.id }
+    - |
+      drive.file{ file_id: match.id }
+
+# Documentation-only starter policies. Same shape as docs.yaml —
+# every action binds `drive.file{file_id: match.id}` cross-API, so
+# folder/ownership conditions read Drive's metadata.
+#
+# == Substitution placeholders ==========================================
+#
+#   <AGENT_FOLDER_ID>  Drive folder ID — same value as Drive's
+#                      <AGENT_FOLDER_ID>. Spreadsheets directly
+#                      inside the folder get RW; sheets the caller
+#                      owns (anywhere) get read.
+#
+# == Out of scope =======================================================
+#
+# `create_spreadsheet` is intentionally not covered for the same
+# reason as `create_document` — the Sheets API doesn't accept a
+# parent folder at create time, and the placement-via-Drive-move
+# pattern is operator-configurable. `developer_metadata` writes
+# (`batch_update_spreadsheet` covers them through developerMetadata
+# sub-requests) ride along with the folder gate.

@@ -1,0 +1,4 @@
+# Real OAuth credentials should never be committed.
+client_secret*.json
+google-creds.json
+credentials.json

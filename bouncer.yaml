@@ -1,0 +1,10 @@
+schema_version: 1
+name: bouncer-gws
+version: 0.1.0
+description: |
+  Bouncer API specs for Google Workspace — Gmail, Calendar, Drive,
+  Docs, and Sheets. Install with `bouncer apis add
+  github.com/jkylling/bouncer-gws@<ref>` and the proxy will load
+  every YAML under apis/ automatically.
+apis:
+  - apis/

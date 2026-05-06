@@ -1,0 +1,26 @@
+---
+# Google API Discovery Service v1 — https://developers.google.com/discovery/v1/reference
+#
+# Public schema endpoints. Google client libraries (gws-cli,
+# google-api-python-client, official Workspace SDKs) hit them at
+# startup to fetch the REST description for the API they're about
+# to call. Routing those calls through bouncer means agents can
+# use stock Google SDKs without detouring around the proxy.
+#
+# Both endpoints are unauthenticated and return only schema
+# metadata, no user data. The bundle README's suggested policy is
+# a permit-all.
+
+name: discovery
+base_url: "https://www.googleapis.com"
+path_prefixes:
+- /discovery/v1
+
+actions:
+- name: list_apis
+  method: GET
+  path: /discovery/v1/apis
+
+- name: get_rest_description
+  method: GET
+  path: /discovery/v1/apis/{api}/{version}/rest
