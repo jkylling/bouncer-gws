@@ -6,7 +6,7 @@
 # inside the document and is manipulated via `documents.batchUpdate`
 # sub-requests — there's no separate endpoint to authorize on.
 
-name: docs
+name: google.docs
 base_url: "https://docs.googleapis.com"
 path_prefixes:
 - /v1/documents
@@ -42,7 +42,7 @@ actions:
     - |
       document{ id: match.id }
     - |
-      drive.file{ file_id: match.id }
+      google.drive.file{ file_id: match.id }
 
 - name: batch_update_document
   method: POST
@@ -51,13 +51,13 @@ actions:
     - |
       document{ id: match.id }
     - |
-      drive.file{ file_id: match.id }
+      google.drive.file{ file_id: match.id }
 
 # Documentation-only starter policies. The Docs spec binds
-# `drive.file{file_id: match.id}` on every action, so the gating
+# `google.drive.file{file_id: match.id}` on every action, so the gating
 # conditions read Drive's metadata fields directly even though we
-# live in the docs API namespace. See gmail.yaml's top-of-block
-# comment for the gating-model rationale, and drive.yaml's notes on
+# live in the docs API namespace. See google.gmail.yaml's top-of-block
+# comment for the gating-model rationale, and google.drive.yaml's notes on
 # direct-parent-only matching.
 #
 # == Substitution placeholders ==========================================

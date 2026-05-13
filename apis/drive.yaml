@@ -13,7 +13,7 @@
 # `fields=*` is requested on reads so output expressions can pick any
 # exposed field (Drive defaults to a sparse subset without it).
 
-name: drive
+name: google.drive
 base_url: "https://www.googleapis.com"
 path_prefixes:
 - /drive/v3
@@ -544,7 +544,7 @@ actions:
     drive{ drive_id: match.drive_id }
 
 # Documentation-only starter policies. Same shape and substitution
-# rules as gmail.yaml — see that file's top-of-block comment for
+# rules as google.gmail.yaml — see that file's top-of-block comment for
 # the gating-model rationale; the Drive set re-uses two of the same
 # trust signals (folder placement, file ownership).
 #

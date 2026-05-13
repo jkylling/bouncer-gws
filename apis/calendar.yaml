@@ -10,7 +10,7 @@
 #   setting          (settings.*)
 #   color            (colors.*)
 
-name: calendar
+name: google.calendar
 base_url: "https://www.googleapis.com"
 path_prefixes:
 - /calendar/v3
@@ -127,7 +127,7 @@ meta:
   # in practice, but the model permits.)
   - name: parent_event
     expr: 'event{?calendar_id: optional.of(input.calendar_id), ?event_id: response.body.?recurringEventId}'
-  # Containing calendar.
+  # Containing google.calendar.
   - name: calendar
     expr: 'calendar{ calendar_id: input.calendar_id }'
 

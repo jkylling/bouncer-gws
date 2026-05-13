@@ -11,7 +11,7 @@
 # metadata, no user data. The bundle README's suggested policy is
 # a permit-all.
 
-name: discovery
+name: google.discovery
 base_url: "https://www.googleapis.com"
 path_prefixes:
 - /discovery/v1

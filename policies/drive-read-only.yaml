@@ -1,0 +1,11 @@
+api: google.drive
+name: read-only-list-files
+action: action.name == "list_files"
+condition: "true"
+result: permit
+---
+api: google.drive
+name: read-only-get-file
+action: action.name == "get_file"
+condition: "true"
+result: permit

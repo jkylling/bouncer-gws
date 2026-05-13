@@ -1,0 +1,35 @@
+api: google.gmail
+name: read-only-get-message
+action: action.name == "get_message"
+condition: "true"
+result: permit
+---
+api: google.gmail
+name: read-only-list-messages
+action: action.name == "list_messages"
+condition: "true"
+result: permit
+---
+api: google.gmail
+name: read-only-get-thread
+action: action.name == "get_thread"
+condition: "true"
+result: permit
+---
+api: google.gmail
+name: read-only-list-threads
+action: action.name == "list_threads"
+condition: "true"
+result: permit
+---
+api: google.gmail
+name: read-only-list-labels
+action: action.name == "list_labels"
+condition: "true"
+result: permit
+---
+api: google.gmail
+name: read-only-get-label
+action: action.name == "get_label"
+condition: "true"
+result: permit
