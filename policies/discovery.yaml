@@ -1,0 +1,53 @@
+# discovery.yaml — open read-only listing endpoints across Gmail and
+# Drive. Each policy has `condition: "true"` because listing returns
+# metadata only and is the discovery primitive the agent needs to
+# find what it should act on — content access still flows through
+# the per-resource gated policies (agent_messages, agent_folder_files,
+# etc.).
+---
+api: google.gmail
+name: agent_discovery
+description: |
+  Single permit covering the read-only listing endpoints. Three
+  actions share `condition: "true"`, so they sit in one policy
+  whose `action.name in [...]` enumerates them:
+
+    - `list_messages` / `list_threads` — search on existing
+      mail. Returns only listing metadata (ids, snippets);
+      fetching a specific message body still flows through
+      `agent_messages` and is label/header-gated. Search is the
+      discovery primitive — without it the agent has no way to
+      find what it should act on.
+
+    - `list_labels` — read-only label enumeration. The typical
+      use is for the agent to find <LABEL_ID> on first run so
+      it doesn't have to be hard-coded. Label metadata (name,
+      type, message count) is not sensitive on its own;
+      message access still flows through `agent_messages`.
+
+  None of these has any write effect or returns full bodies, so
+  a single open condition is appropriate.
+action: |
+  action.name in [
+    "list_messages",
+    "list_threads",
+    "list_labels"
+  ]
+condition: "true"
+result: permit
+---
+api: google.drive
+name: agent_discovery
+description: |
+  Permits `list_files`. Returns metadata only (id, name,
+  mimeType, parents, owners) for files matching the caller's
+  Drive query; full content access still flows through
+  `agent_folder_files` and the per-API authored-read recipes.
+
+  Why open: search is the discovery primitive. Without it the
+  agent has to be handed every file ID externally, which makes
+  the folder workflow unusable. The metadata leakage is bounded
+  to what the user can already see in the Drive UI.
+action: action.name == "list_files"
+condition: "true"
+result: permit

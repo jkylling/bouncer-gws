@@ -1,0 +1,85 @@
+# authored-read.yaml — read-only access to docs, sheets, and the
+# comment threads the user authored, regardless of which Drive
+# folder they live in. The trust signal here is `ownedByMe` on the
+# underlying Drive file.
+#
+# No substitution placeholders — these are folder-independent.
+#
+# Why read-only: writing into resources outside the agent folder
+# crosses a different trust axis. Folder placement is the load-
+# bearing signal for write (see policies/agent-folder.yaml);
+# ownership alone isn't.
+---
+api: google.drive
+name: authored_comments_read
+description: |
+  Permits read on comments and replies when the parent file is
+  owned by the user (`file.ownedByMe == true`). Covers Docs and
+  Sheets comments too — they live on the same Drive comment
+  endpoints, so a docs.* / sheets.* file owned by the user gets
+  its comment thread readable through this Drive policy.
+
+  Why read-only: writing comments on a file the agent doesn't
+  explicitly own is a leakage risk (a comment is visible to
+  every collaborator). The folder gate is the right surface
+  for write — files there are agent-managed.
+
+  Excluded: `get_file` / `export_file` for the file itself.
+  Read access on the file content lives in the per-API
+  `authored_*_read` recipes (`docs.authored_docs_read`,
+  `sheets.authored_sheets_read`); the Drive surface only covers
+  the comment thread.
+action: |
+  action.name in [
+    "list_comments",
+    "get_comment",
+    "list_replies",
+    "get_reply"
+  ]
+condition: |
+  file.ownedByMe.orValue(false)
+result: permit
+---
+api: google.docs
+name: authored_docs_read
+description: |
+  Read-only permit on docs the user owns, regardless of folder.
+  `get_document` returns the full document body — useful for an
+  agent that needs to summarise or quote earlier work. Pair
+  with Drive's `authored_comments_read` for comment context.
+
+  Why read-only: writing into a doc outside the agent folder
+  crosses into territory where the user might not expect agent
+  edits. Folder placement is the load-bearing trust signal for
+  write; ownership alone isn't.
+action: action.name == "get_document"
+condition: |
+  drive.file.ownedByMe.orValue(false)
+result: permit
+---
+api: google.sheets
+name: authored_sheets_read
+description: |
+  Read-only permit on sheets the user owns, regardless of
+  folder. Covers the `get_spreadsheet` family and the value-
+  read endpoints (single, batch, by-data-filter), plus
+  developer-metadata reads. Pair with Drive's
+  `authored_comments_read` for comment context.
+
+  Why read-only: same reasoning as `authored_docs_read` —
+  writing into a sheet outside the agent folder is a different
+  trust axis than owning it. Folder placement is the load-
+  bearing signal for write; ownership alone isn't.
+action: |
+  action.name in [
+    "get_spreadsheet",
+    "get_spreadsheet_by_data_filter",
+    "get_values",
+    "batch_get_values",
+    "batch_get_values_by_data_filter",
+    "get_developer_metadata",
+    "search_developer_metadata"
+  ]
+condition: |
+  drive.file.ownedByMe.orValue(false)
+result: permit

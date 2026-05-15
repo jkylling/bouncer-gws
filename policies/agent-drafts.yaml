@@ -1,0 +1,112 @@
+# agent-drafts.yaml — read / update / delete / create / send drafts
+# the agent composed, with a separate gate for actually delivering
+# mail.
+#
+# Placeholders:
+#   <TRUSTED_HEADER>       — RFC-5322 header name stamped on every
+#                            draft the agent composes (e.g.
+#                            X-Agent-Author).
+#   <TRUSTED_HEADER_VALUE> — its value (e.g. claude).
+#   <SEND_LABEL_ID>        — Gmail label id applied to a draft's
+#                            underlying message by a non-agent actor
+#                            (reviewer button, MCP tool gated by
+#                            human approval, proposal handler). The
+#                            only invariant that matters: the label
+#                            cannot be applied by the same caller
+#                            that produced the draft.
+#
+# Why a header (not label) for the agent-side gate: the drafts API
+# doesn't accept label changes (Google issuetracker 194804420), so
+# labels aren't reachable from the agent's drafts flow. The header
+# is what the agent can stamp; the label is what an external actor
+# can.
+---
+api: google.gmail
+name: agent_drafts
+description: |
+  Permits `get_draft`, `update_draft`, and `delete_draft` on
+  drafts the agent composed, identified by
+  <TRUSTED_HEADER>: <TRUSTED_HEADER_VALUE> in the raw RFC-5322
+  body.
+
+  Why include delete: deleting a draft is contained — nothing has
+  left the user's mailbox yet, and an agent that can update its
+  own drafts can effectively erase them anyway by overwriting.
+  The blast radius is bounded to the agent's own work.
+
+  Why exclude `send_draft`: sending actually delivers mail and
+  needs a separate trust signal applied by a non-agent actor —
+  see `send_authorized_drafts` below.
+action: |
+  action.name in ["get_draft", "update_draft", "delete_draft"]
+condition: |
+  draft.message.payload.headers.orValue([]).exists(h,
+    h.name == "<TRUSTED_HEADER>" && h.value == "<TRUSTED_HEADER_VALUE>"
+  )
+result: permit
+---
+api: google.gmail
+name: create_authored_drafts
+description: |
+  Permits `create_draft` only when the request body's structured
+  `message.payload.headers` contains
+  <TRUSTED_HEADER>: <TRUSTED_HEADER_VALUE> — the same authorship
+  header that gates `agent_drafts` for read/update/delete.
+
+  Why require the header at create time: it lifts the gate from
+  "agent can write to the drafts folder" to "agent must announce
+  every draft it writes is its own work". Drafts the agent
+  creates without the header are not just unreachable through
+  `agent_drafts` (already true); they're refused at create
+  altogether, so the agent can't accidentally produce drafts
+  that look like they came from somewhere else.
+
+  The condition reads the structured-headers form. An agent that
+  sends `message.raw` (base64-url RFC-5322) bypasses the
+  inspectable path and is denied — that's deliberate: bouncer's
+  runtime doesn't decode arbitrary base64, and silently
+  permitting an opaque body would defeat the gate.
+action: action.name == "create_draft"
+condition: |
+  request.body.?message.?payload.?headers.orValue([]).exists(h,
+    h.name == "<TRUSTED_HEADER>" && h.value == "<TRUSTED_HEADER_VALUE>"
+  )
+result: permit
+---
+api: google.gmail
+name: send_authorized_drafts
+description: |
+  Permits `send_draft` only when the draft's underlying message
+  carries the <SEND_LABEL_ID> label — distinct from <LABEL_ID>
+  that scopes the rest of the agent's mailbox access. The label
+  is the load-bearing safety property: a compromised compose
+  pipeline can flood the drafts folder but cannot deliver mail
+  until something OUTSIDE the agent's reach attaches the label.
+
+  Why a label rather than a header: the agent stamps headers on
+  bodies it writes, so headers aren't a credible second signal
+  against an agent-side compromise. Labels live on the message
+  metadata, not the body, and can be applied by a separate actor
+  via `users.messages.modify` against the draft's underlying
+  message id — bypassing the drafts-update labelling restriction
+  that prevents the agent itself from self-labelling.
+
+  Where <SEND_LABEL_ID> comes from is operator-decided. Typical
+  shapes:
+
+    - a reviewer button in /_admin/proposals that calls
+      `users.messages.modify` to attach <SEND_LABEL_ID>, then
+      approves the send;
+    - a separate MCP tool the agent harness calls only after a
+      human OK in some side channel (Slack, Linear, …);
+    - a per-call proposal approved through /_api/proposals that
+      attaches the label as part of the approval handler.
+
+  Whatever path you wire, the only invariant that matters is:
+  the label cannot be applied by the same caller that produced
+  the draft. Otherwise this collapses to a one-header gate that
+  `agent_drafts` already provides.
+action: action.name == "send_draft"
+condition: |
+  "<SEND_LABEL_ID>" in draft.message.labelIds
+result: permit

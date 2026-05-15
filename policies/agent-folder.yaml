@@ -1,0 +1,132 @@
+# agent-folder.yaml — full read+write surface on Drive files (and the
+# Docs / Sheets that live in them) whose direct parent is the agent's
+# working folder.
+#
+# Placeholder:
+#   <AGENT_FOLDER_ID> — Drive folder id under which the agent is free
+#                       to read, write, create, and delete.
+#
+# Direct-parent only: Drive's `file.parents` is a single level — for
+# nested folders, layer additional policies with different
+# <AGENT_FOLDER_ID> values.
+#
+# Excluded: permissions/sharing (separate trust axis), revisions
+# (administrative), drives administration, and `create_document` /
+# `create_spreadsheet` (which can't accept a parent at create time
+# and need a separate move step).
+---
+api: google.drive
+name: agent_folder_files
+description: |
+  Permits the full read+write surface on a Drive file when its
+  direct parent is <AGENT_FOLDER_ID>. Single condition, multi-
+  action — every operation that binds the `file` meta and
+  matches the parent check sits in this one policy.
+
+  Why direct-parent only: Drive's `file.parents` is a single
+  level (see top-of-block notes). For nested folders, layer a
+  second policy with a different <AGENT_FOLDER_ID>.
+
+  Includes comment + reply ops (which bind `file{file_id}` via
+  the action's URL template) so a comment thread on an
+  in-folder file is read/writeable through the same gate as the
+  file itself.
+
+  Excluded: `permissions.*` (sharing — a separate trust axis),
+  `revisions.*` (administrative), `list_files` (search; covered
+  by `agent_discovery` since listing is the discovery primitive
+  and content access is per-file-gated).
+action: |
+  action.name in [
+    "get_file",
+    "update_file",
+    "upload_file_update",
+    "delete_file",
+    "copy_file",
+    "export_file",
+    "watch_file",
+    "list_file_labels",
+    "modify_file_labels",
+    "list_comments",
+    "get_comment",
+    "create_comment",
+    "update_comment",
+    "delete_comment",
+    "list_replies",
+    "get_reply",
+    "create_reply",
+    "update_reply",
+    "delete_reply"
+  ]
+condition: |
+  "<AGENT_FOLDER_ID>" in file.parents.orValue([])
+result: permit
+---
+api: google.drive
+name: agent_folder_create
+description: |
+  Permits `create_file` and `upload_file` only when the request
+  body explicitly places the new file under <AGENT_FOLDER_ID>.
+  Without this gate `create_file` would let the agent create
+  files anywhere (including shared drives the user has write
+  access to); the gate forces every newly-created file into the
+  folder where `agent_folder_files` can subsequently manage it.
+
+  Inspectable path: `request.body.parents`. The Drive API
+  accepts a `parents` array on create with one or more folder
+  IDs — the gate fires when <AGENT_FOLDER_ID> is among them.
+action: |
+  action.name in ["create_file", "upload_file"]
+condition: |
+  "<AGENT_FOLDER_ID>" in request.body.?parents.orValue([])
+result: permit
+---
+api: google.docs
+name: agent_folder_docs
+description: |
+  Permits `get_document` and `batch_update_document` when the
+  document's underlying Drive file sits directly in
+  <AGENT_FOLDER_ID>. The cross-API `drive.file` bind on each
+  action exposes `parents` so this condition is the same shape
+  Drive uses for `agent_folder_files`.
+action: |
+  action.name in ["get_document", "batch_update_document"]
+condition: |
+  "<AGENT_FOLDER_ID>" in drive.file.parents.orValue([])
+result: permit
+---
+api: google.sheets
+name: agent_folder_sheets
+description: |
+  Permits the full spreadsheet read+write surface when the
+  underlying Drive file sits directly in <AGENT_FOLDER_ID>.
+  Single condition, multi-action — every operation that binds
+  `spreadsheet` (and through it `drive.file`) sits in this one
+  policy.
+
+  `developer_metadata` reads/searches and value-range
+  read/write/append/clear in every shape (single-range,
+  batch, by-data-filter) all share the same condition, so
+  grouping them avoids policy fanout.
+action: |
+  action.name in [
+    "get_spreadsheet",
+    "get_spreadsheet_by_data_filter",
+    "batch_update_spreadsheet",
+    "get_values",
+    "update_values",
+    "append_values",
+    "clear_values",
+    "batch_get_values",
+    "batch_update_values",
+    "batch_clear_values",
+    "batch_get_values_by_data_filter",
+    "batch_update_values_by_data_filter",
+    "batch_clear_values_by_data_filter",
+    "copy_sheet_to",
+    "get_developer_metadata",
+    "search_developer_metadata"
+  ]
+condition: |
+  "<AGENT_FOLDER_ID>" in drive.file.parents.orValue([])
+result: permit

@@ -1,0 +1,74 @@
+# agent-owned-mail.yaml — read / modify / trash / delete on messages
+# and threads that are "agent-owned": tagged with <LABEL_ID> OR
+# carrying <TRUSTED_HEADER>: <TRUSTED_HEADER_VALUE>.
+#
+# Two ownership signals:
+#   <LABEL_ID>           — Gmail label id (durable, visible in the UI,
+#                          updatable via modify_message).
+#   <TRUSTED_HEADER>     — RFC-5322 header name the agent's compose
+#                          pipeline stamps on outgoing mail
+#                          (e.g. X-Agent-Author).
+#   <TRUSTED_HEADER_VALUE> — header value (e.g. claude). Pick an
+#                          agent-specific value so a different agent
+#                          can't swap their identifier in and inherit
+#                          the same permissions.
+#
+# Operators substitute the placeholders before applying.
+---
+api: google.gmail
+name: agent_messages
+description: |
+  Lets the agent read and mutate any single message that is
+  "agent-owned": tagged with <LABEL_ID> OR carrying the
+  <TRUSTED_HEADER>: <TRUSTED_HEADER_VALUE> header. The label is
+  the durable signal (operators see it in the Gmail UI; the agent
+  can update it explicitly through `modify_message`); the header
+  is the originator signal (an outgoing message stamped by the
+  agent's compose pipeline carries it on every reply in the
+  thread without an extra label round-trip).
+
+  Covers every `users.messages.*` action that binds the
+  `message` resource, plus `get_attachment` (which also binds
+  `message`).
+
+  Listing-style actions (list_messages) are gated separately —
+  see policies/discovery.yaml.
+action: |
+  action.name in [
+    "get_message",
+    "modify_message",
+    "trash_message",
+    "untrash_message",
+    "delete_message",
+    "get_attachment"
+  ]
+condition: |
+  "<LABEL_ID>" in message.labelIds
+  || message.headers.orValue([]).exists(h, h.name == "<TRUSTED_HEADER>" && h.value == "<TRUSTED_HEADER_VALUE>")
+result: permit
+---
+api: google.gmail
+name: agent_threads
+description: |
+  Same gating as `agent_messages`, lifted to the thread level: a
+  thread is agent-owned when at least one of its messages carries
+  <LABEL_ID> or <TRUSTED_HEADER>: <TRUSTED_HEADER_VALUE>. One
+  predicate covers every `users.threads.*` action that binds a
+  `thread`. Lifting the predicate to "any message in the thread"
+  matches the typical Gmail workflow — the user replies in-thread
+  and the agent should keep its permissions across the whole
+  thread, not just the original message.
+action: |
+  action.name in [
+    "get_thread",
+    "modify_thread",
+    "trash_thread",
+    "untrash_thread",
+    "delete_thread"
+  ]
+condition: |
+  thread.messages.exists(m,
+    "<LABEL_ID>" in m.labelIds
+    || m.payload.headers.orValue([]).exists(h, h.name == "<TRUSTED_HEADER>" && h.value == "<TRUSTED_HEADER_VALUE>")
+  )
+result: permit
