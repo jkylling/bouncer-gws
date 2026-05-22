@@ -11,45 +11,40 @@ service:
   slug: google
   title: Google Workspace
   description: |
-    Gmail, Drive, Calendar, Docs, and Sheets. Bouncer holds the
-    upstream OAuth2 credential; agents only see a bouncer-issued
-    bearer.
-  prompt: prompts/google-token.md
-  credential:
-    path: ~/.config/bouncer/google-creds.json
-    mode: "0600"
-    template: |
-      {
-        "type": "authorized_user",
-        "access_token": "{{ .AccessToken }}"
-      }
-  env:
-    GOOGLE_APPLICATION_CREDENTIALS: "{{ .Path }}"
+    Gmail, Drive, Calendar, Docs, and Sheets. Issues bouncer-bearer
+    JWTs that wrap your OAuth2 access (or refresh) token.
 
-# OAuth config. "Sign in with Google" is only available
-# when both env vars below are set on the bouncer process.
-oauth:
-  authorize_url: https://accounts.google.com/o/oauth2/v2/auth
-  token_url:     https://oauth2.googleapis.com/token
-  scopes:
-    - https://www.googleapis.com/auth/gmail.modify
-    - https://www.googleapis.com/auth/drive
-    - https://www.googleapis.com/auth/calendar
-    - https://www.googleapis.com/auth/documents
-    - https://www.googleapis.com/auth/spreadsheets
-  client_id_env:     BOUNCER_GOOGLE_CLIENT_ID
-  client_secret_env: BOUNCER_GOOGLE_CLIENT_SECRET
-
-# Bring-your-own-token variants the UI renders on the Configure tab.
+# Bring-your-own-token variants. The tokens screen renders one form
+# per variant and emits a copy-pasteable bouncer JWT.
 token:
+  - id: access_token
+    title: Access token
+    description: |
+      Paste a short-lived OAuth2 access token. Convenient for one-
+      off explorations; the issued JWT expires when the upstream
+      token does (typically one hour). Use the refresh-token variant
+      for any durable deployment.
+    fields:
+      - name: access_token
+        label: Access token
+        kind: secret
+        placeholder: ya29...
+        required: true
+
   - id: refresh_token
     title: Refresh token + client
     description: |
       Paste the long-lived OAuth2 refresh token plus the matching
-      client_id and client_secret. Clients can use the refresh
-      token to get access tokens transparently. Recommended for
-      long-running agents.
+      client_id and client_secret. The bouncer /token endpoint
+      transparently rotates upstream access tokens for clients.
+    refresh:
+      token_url: https://oauth2.googleapis.com/token
     fields:
+      - name: refresh_token
+        label: Refresh token
+        kind: secret
+        placeholder: "1//0g..."
+        required: true
       - name: client_id
         label: Client ID
         kind: text
@@ -59,41 +54,3 @@ token:
         label: Client secret
         kind: secret
         required: true
-      - name: refresh_token
-        label: Refresh token
-        kind: secret
-        placeholder: "1//0g..."
-        required: true
-
-  - id: access_token
-    title: Access token
-    description: |
-      Paste a short-lived OAuth2 access token. Convenient for one-
-      off explorations; the connection expires when the token does
-      (typically one hour). Use the refresh-token variant for any
-      durable deployment.
-    fields:
-      - name: access_token
-        label: Access token
-        kind: secret
-        placeholder: ya29...
-        required: true
-
-# Suggested starter policies.
-policies:
-  - id: gmail-read-only
-    title: Gmail — read-only
-    description: |
-      Permit list / get on messages, threads, and labels. No drafts,
-      no sends, no mutations. Good baseline for a digest agent.
-    file: policies/gmail-read-only.yaml
-    default_enabled: true
-
-  - id: drive-read-only
-    title: Drive — read-only metadata
-    description: |
-      Permit files.list and files.get (metadata fields only). No
-      content download, no mutations. Good baseline for an agent
-      that summarises folder structure.
-    file: policies/drive-read-only.yaml
-    default_enabled: false
