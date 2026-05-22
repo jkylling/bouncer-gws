@@ -5,6 +5,25 @@
 # the per-resource gated policies (agent_messages, agent_folder_files,
 # etc.).
 ---
+# Google API Discovery Service — schema endpoints. The API itself is
+# marked `auth: optional` so SDKs can probe it before they have a
+# bouncer JWT wired. Permit covers both kinds: an authenticated agent
+# (kind=agent) and a no-Bearer SDK startup probe (kind=anonymous).
+api: google.discovery
+name: agent_discovery
+description: |
+  Open `list_apis` and `get_rest_description`. Returns schema metadata
+  only (REST descriptions, no user data). Routing schema probes
+  through bouncer means stock Google SDKs can discover their target
+  API without detouring around the proxy.
+action: |
+  action.name in [
+    "list_apis",
+    "get_rest_description"
+  ]
+condition: "true"
+result: permit
+---
 api: google.gmail
 name: agent_discovery
 description: |

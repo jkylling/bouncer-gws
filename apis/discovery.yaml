@@ -16,6 +16,14 @@ base_url: "https://www.googleapis.com"
 path_prefixes:
 - /discovery/v1
 
+# Schema endpoints don't need a credential, so agents without a
+# bouncer JWT should still be able to reach them through the proxy
+# (an SDK's startup discovery probe usually runs before any auth is
+# wired). `auth: optional` admits no-Bearer requests as
+# kind=anonymous; the discovery policy below gates the permit on
+# that kind.
+auth: optional
+
 actions:
 - name: list_apis
   method: GET
