@@ -65,9 +65,6 @@ meta:
   - name: range
   request: get('/v4/spreadsheets/' + string(input.spreadsheet) + '/values/' + string(input.range))
   output:
-  # `range` is the A1 notation the request specified.
-  - name: range
-    expr: response.body.range
   - name: parent_spreadsheet
     expr: 'spreadsheet{ id: input.spreadsheet }'
 
