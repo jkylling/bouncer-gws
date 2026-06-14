@@ -31,7 +31,7 @@ unwraps and forwards upstream.
 
 ### Scopes
 
-Pick the tightest scope per service the agent will touch — bouncer
+Pick the tightest scope per service the agent will touch. Bouncer
 narrows, never widens. A token issued with `gmail.readonly` cannot
 `send_message` regardless of what the policy permits.
 
@@ -60,8 +60,7 @@ bouncer issue-token \
   --ttl 1h
 ```
 
-Google access tokens expire after ~1h. Fine for smoke tests, not
-fine for an overnight agent.
+Google access tokens expire after ~1h.
 
 ### OAuth2 refresh (long-running agents)
 
@@ -82,7 +81,7 @@ number of agents.
       Search for and enable *Gmail API*, *Google Drive API*,
       *Google Docs API*, *Google Sheets API*, *Google Calendar API*
       — whichever the agent will touch. Skipping one means a 403
-      from Google long before bouncer's policy ever runs.
+      from Google before bouncer's policy runs.
 
    c. **Configure the OAuth consent screen** at
       [APIs & Services → OAuth consent screen](https://console.cloud.google.com/apis/credentials/consent):
@@ -92,13 +91,12 @@ number of agents.
       - Add the scopes from the table above. Sensitive / restricted
         scopes (`gmail.modify`, `drive`) flag the project for
         Google verification before the app can leave Testing mode.
-      - Leave the screen in **Testing** and add your own Google
+      - Add your own Google
         account as a *Test user* — the agent acts as you, so the
         test user is the same address whose mailbox / Drive the
-        agent will touch. Add other addresses too if multiple
-        people will run the same client. Refresh tokens issued in
+        agent will touch. Refresh tokens issued in
         Testing expire after 7 days, so a long-running agent
-        eventually needs the app verified or kept Internal.
+        eventually needs the app to be published.
 
    d. **Create an OAuth 2.0 Client ID** at
       [APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials)
@@ -166,10 +164,6 @@ on refresh* and depends on how the client reaches the proxy:
 output — the upstream `client_id` / `client_secret` ride on the
 wire on every refresh (standard OAuth2), and the upstream refresh
 token is encrypted into the JWT and never leaves the proxy.
-
-> Tip: from the data dir created by `bouncer init`, you can drop
-> the `--secret-hex` (or `ISSUE_TOKEN_SECRET_HEX`) — `issue-token`
-> auto-loads `./secret.hex` when the cwd looks initialized.
 
 ### Sanity check
 
@@ -371,7 +365,7 @@ result: permit
 `list_threads` is split out because each returned thread carries
 a `snippet` field — ~100–200 chars of the latest message, plus
 HTML highlight tags around any `q=` match. Unconstrained, that's
-enough to leak content past the label gate: `q=lidar` returns the
+enough to leak content past the label gate: `q=test` returns the
 matching thread's snippet even when `agent_threads` would refuse
 `get_thread` on the same id.
 
@@ -465,10 +459,6 @@ condition: |
   file.ownedByMe == true
 result: permit
 ```
-
-Read-only: writing comments on a file outside the folder is a
-leakage risk (a comment is visible to every collaborator). The
-folder gate above is the right surface for write.
 
 ### Read-only on recently-modified files (any folder)
 
